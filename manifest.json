@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.lekonidus.currency",
+  "name": "Currency",
+  "version": "1.0.0",
+  "author": "Lekonidus",
+  "license": "MIT",
+  "description": "Convert currencies from the bar using ECB rates.",
+  "kinds": ["bar-widget"],
+  "entryPoints": {
+    "barWidget": "Entry.qml"
+  },
+  "barWidget": {
+    "displayName": "Currency",
+    "description": "Live FX rate with a conversion panel",
+    "category": "Info",
+    "allowMultiple": false,
+    "defaultSection": "center",
+    "defaults": {
+      "from": "USD",
+      "to": "ILS"
+    },
+    "schema": [
+      { "key": "from", "type": "string", "label": "From currency" },
+      { "key": "to", "type": "string", "label": "To currency" }
+    ]
+  }
+}
