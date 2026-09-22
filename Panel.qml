@@ -32,7 +32,6 @@ Panel {
   property var rates: ({})
   property string statusText: ""
   property bool loading: false
-  property string fetchBody: ""
 
   readonly property var fromOptions: Model.currencyOptions(["USD", "EUR"])
   readonly property var toOptions: Model.currencyOptions(["ILS", "USD", "EUR"])
