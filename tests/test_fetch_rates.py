@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 # Run: python3 tests/test_fetch_rates.py
-"""Smoke checks for bin/fetch-rates byte ceiling and success path."""
+"""Smoke checks for bin/fetch-rates byte ceiling and wall-clock deadline."""
 from __future__ import annotations
 
 import http.server
 import subprocess
 import threading
-import urllib.request
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -22,8 +22,32 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         if self.mode == "big":
             body = b"x" * 70000
-        else:
-            body = b'{"amount":1.0,"base":"USD","date":"2026-09-20","rates":{"ILS":3.0}}'
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        if self.mode == "drip":
+            # Slow-drip body: keeps per-read socket timeouts happy but must
+            # trip the end-to-end 8s deadline.
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Transfer-Encoding", "chunked")
+            self.end_headers()
+            try:
+                for _ in range(30):
+                    chunk = b"x"
+                    self.wfile.write(f"{len(chunk):x}\r\n".encode() + chunk + b"\r\n")
+                    self.wfile.flush()
+                    time.sleep(1)
+                self.wfile.write(b"0\r\n\r\n")
+            except BrokenPipeError:
+                return
+            return
+
+        body = b'{"amount":1.0,"base":"USD","date":"2026-09-20","rates":{"ILS":3.0}}'
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
@@ -31,11 +55,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.wfile.write(body)
 
 
-def run_fetch(url: str) -> subprocess.CompletedProcess:
+def run_fetch(url: str, timeout: float = 20) -> subprocess.CompletedProcess:
     return subprocess.run(
         [str(FETCH), url],
         capture_output=True,
-        timeout=15,
+        timeout=timeout,
         check=False,
     )
 
@@ -57,6 +81,15 @@ def main() -> None:
         big = run_fetch(base)
         assert big.returncode == 3, (big.returncode, big.stderr)
         assert big.stdout == b""
+
+        Handler.mode = "drip"
+        started = time.monotonic()
+        drip = run_fetch(base, timeout=20)
+        elapsed = time.monotonic() - started
+        assert drip.returncode == 4, (drip.returncode, drip.stderr)
+        assert drip.stdout == b""
+        assert 7.0 <= elapsed <= 12.0, elapsed
+
         print("ok")
     finally:
         server.shutdown()

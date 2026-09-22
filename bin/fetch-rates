@@ -1,17 +1,29 @@
 #!/usr/bin/env python3
-"""Fetch Frankfurter JSON with wall-clock and stdout byte ceilings.
+"""Fetch Frankfurter JSON with end-to-end wall-clock and byte ceilings.
 
-Exits non-zero on timeout, HTTP/network errors, or response overflow so the
+Exits non-zero on deadline, HTTP/network errors, or response overflow so the
 shell only parses a successfully bounded body.
+
+urllib's per-operation socket timeout alone is not enough: a slow-drip peer
+can keep resetting that timer. SIGALRM enforces one deadline for connect +
+headers + the entire body read.
 """
 from __future__ import annotations
 
+import signal
 import sys
-import urllib.error
 import urllib.request
 
 LIMIT = 65536
 TIMEOUT = 8
+
+
+class DeadlineExceeded(Exception):
+    pass
+
+
+def _on_alarm(_signum, _frame) -> None:
+    raise DeadlineExceeded("currency: wall-clock deadline exceeded")
 
 
 def main() -> int:
@@ -26,7 +38,10 @@ def main() -> int:
         method="GET",
     )
 
+    signal.signal(signal.SIGALRM, _on_alarm)
+    signal.setitimer(signal.ITIMER_REAL, TIMEOUT)
     try:
+        # Socket timeout is a per-op fallback; the alarm is the hard deadline.
         with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
             chunks: list[bytes] = []
             total = 0
@@ -42,9 +57,14 @@ def main() -> int:
                     )
                     return 3
                 chunks.append(block)
+    except DeadlineExceeded as exc:
+        print(str(exc), file=sys.stderr)
+        return 4
     except Exception as exc:  # noqa: BLE001 — surface any fetch failure to QML
         print(f"currency: fetch failed: {exc}", file=sys.stderr)
         return 1
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
 
     sys.stdout.buffer.write(b"".join(chunks))
     return 0

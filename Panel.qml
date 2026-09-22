@@ -132,6 +132,7 @@ Panel {
       root.loading = false
       if (code !== 0) {
         if (code === 3) root.statusText = "Response too large"
+        else if (code === 4) root.statusText = "Timed out"
         else if (!root.statusText) root.statusText = "Offline"
         return
       }

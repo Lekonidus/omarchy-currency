@@ -46,7 +46,7 @@ omarchy plugin remove io.github.lekonidus.currency --yes
 - Network access to `api.frankfurter.app`
 
 No API key, npm, or pip packages. Rate responses are capped at 64 KiB with an
-8-second timeout before the panel parses them.
+8-second end-to-end deadline before the panel parses them.
 
 ## License
 
