@@ -130,7 +130,6 @@ Panel {
     // by bin/fetch-rates before it ever reaches this collector.
     onExited: function(code) {
       root.loading = false
-      root.fetchBody = ""
       if (code !== 0) {
         if (code === 3) root.statusText = "Response too large"
         else if (!root.statusText) root.statusText = "Offline"
