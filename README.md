@@ -42,10 +42,11 @@ omarchy plugin remove io.github.lekonidus.currency --yes
 ## Dependencies
 
 - Omarchy 4 (`schemaVersion: 1` plugin API)
-- `curl` (for Frankfurter HTTPS requests)
+- Python 3 (stdlib only; used by `bin/fetch-rates`)
 - Network access to `api.frankfurter.app`
 
-No API key, npm, or pip packages.
+No API key, npm, or pip packages. Rate responses are capped at 64 KiB with an
+8-second timeout before the panel parses them.
 
 ## License
 

@@ -17,6 +17,13 @@ Panel {
   readonly property color foreground: bar ? bar.foreground : Color.foreground
   readonly property color dim: Qt.darker(foreground, 1.55)
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
+  // Plugin root on disk (works whether the folder is "currency" or the id).
+  readonly property string pluginDir: {
+    var path = Qt.resolvedUrl(".").toString()
+    if (path.indexOf("file://") === 0) path = path.slice(7)
+    if (path.length > 1 && path.charAt(path.length - 1) === "/") path = path.slice(0, -1)
+    return path
+  }
 
   // USD/EUR are the usual "from"; ILS is the usual "to".
   property string fromCode: Model.normalizeCode(setting("from", "USD")) || "USD"
@@ -25,6 +32,7 @@ Panel {
   property var rates: ({})
   property string statusText: ""
   property bool loading: false
+  property string fetchBody: ""
 
   readonly property var fromOptions: Model.currencyOptions(["USD", "EUR"])
   readonly property var toOptions: Model.currencyOptions(["ILS", "USD", "EUR"])
@@ -90,7 +98,7 @@ Panel {
     if (fetchProc.running) fetchProc.running = false
     loading = true
     statusText = ""
-    fetchProc.command = ["curl", "-fsSL", "--max-time", "8", Model.frankfurterUrl(fromCode)]
+    fetchProc.command = [root.pluginDir + "/bin/fetch-rates", Model.frankfurterUrl(fromCode)]
     fetchProc.running = true
   }
 
@@ -117,31 +125,25 @@ Panel {
 
   Process {
     id: fetchProc
-    stdout: StdioCollector {
-      onStreamFinished: {
-        root.loading = false
-        var parsed = Model.parseFrankfurter(text)
-        if (!parsed) {
-          root.statusText = "Rate fetch failed"
-          return
-        }
-        root.rates = parsed.rates
-        root.statusText = parsed.date ? ("ECB " + parsed.date) : ""
-      }
-    }
-    stderr: StdioCollector {
-      onStreamFinished: {
-        if (!fetchProc.running && root.loading) {
-          root.loading = false
-          if (text && text.length) root.statusText = "Offline"
-        }
-      }
-    }
+    stdout: StdioCollector { id: fetchOut }
+    stderr: StdioCollector { }
+    // Parse only after the bounded helper exits 0. Stdio is capped at 64 KiB
+    // by bin/fetch-rates before it ever reaches this collector.
     onExited: function(code) {
-      if (code !== 0 && root.loading) {
-        root.loading = false
-        if (!root.statusText) root.statusText = "Offline"
+      root.loading = false
+      root.fetchBody = ""
+      if (code !== 0) {
+        if (code === 3) root.statusText = "Response too large"
+        else if (!root.statusText) root.statusText = "Offline"
+        return
       }
+      var parsed = Model.parseFrankfurter(fetchOut.text)
+      if (!parsed) {
+        root.statusText = "Rate fetch failed"
+        return
+      }
+      root.rates = parsed.rates
+      root.statusText = parsed.date ? ("ECB " + parsed.date) : ""
     }
   }
 
