@@ -263,21 +263,32 @@ Panel {
         }
 
         Row {
+          id: actionRow
+          width: parent.width
           spacing: Style.space(8)
 
+          // Equal hitboxes — Button.implicitWidth follows label length otherwise.
+          readonly property real btnW: (width - spacing) / 2
+          readonly property real btnH: Math.max(swapBtn.implicitHeight, refreshBtn.implicitHeight)
+
           Button {
+            id: swapBtn
+            width: actionRow.btnW
+            height: actionRow.btnH
             text: "Swap"
-            iconText: "\uf0ec"
+            iconText: "󰓡"  // nf-md-swap-horizontal
             foreground: root.foreground
-            fontFamily: root.fontFamily
             bordered: true
             onClicked: root.swapPair()
           }
 
           Button {
+            id: refreshBtn
+            width: actionRow.btnW
+            height: actionRow.btnH
             text: "Refresh"
+            iconText: "󰑐"  // nf-md-refresh
             foreground: root.foreground
-            fontFamily: root.fontFamily
             bordered: true
             onClicked: root.refresh()
           }

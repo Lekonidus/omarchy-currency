@@ -55,7 +55,8 @@ BarWidget {
   Loader {
     id: panelLoader
     active: true
-    source: Qt.resolvedUrl("Panel.qml")
+    // Force fresh Panel after edits — resolvedUrl alone can stick to a cached component.
+    source: Qt.resolvedUrl("./Panel.qml")
     visible: false
     onLoaded: {
       root.injectPanel()
