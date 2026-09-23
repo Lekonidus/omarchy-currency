@@ -37,13 +37,21 @@ var CURRENCY_NAMES = {
 // Bar icon (nf-fa-money). Same slot size as weather / hass.
 var BAR_ICON = "\uf0d6"
 
+// Always fetch this base so from/to/swap never need a refetch to convert.
+var RATES_BASE = "USD"
+
 function normalizeCode(value) {
   return String(value || "").replace(/^\s+|\s+$/g, "").toUpperCase()
 }
 
+function isKnownCode(value) {
+  var code = normalizeCode(value)
+  return !!CURRENCY_NAMES[code]
+}
+
 function parseAmount(value) {
   var n = parseFloat(String(value || "").replace(",", ".").replace(/[^\d.\-]/g, ""))
-  return isNaN(n) ? 0 : n
+  return isNaN(n) ? NaN : n
 }
 
 function parseFrankfurter(raw) {
@@ -77,9 +85,11 @@ function rateBetween(from, to, rates) {
 }
 
 function convert(amount, from, to, rates) {
+  var qty = parseAmount(amount)
+  if (isNaN(qty)) return null
   var rate = rateBetween(from, to, rates)
   if (rate === null) return null
-  return parseAmount(amount) * rate
+  return qty * rate
 }
 
 function formatRate(rate) {
@@ -106,9 +116,18 @@ function rateLabel(from, to, rate) {
   return "1 " + src + " = " + formatted + " " + dst
 }
 
-function frankfurterUrl(from) {
-  var base = normalizeCode(from) || "USD"
-  return "https://api.frankfurter.app/latest?from=" + encodeURIComponent(base)
+function frankfurterUrl(_from) {
+  return "https://api.frankfurter.app/latest?from=" + encodeURIComponent(RATES_BASE)
+}
+
+function normalizePair(from, to, fallbackFrom, fallbackTo) {
+  var src = normalizeCode(from)
+  var dst = normalizeCode(to)
+  if (!isKnownCode(src)) src = normalizeCode(fallbackFrom) || "USD"
+  if (!isKnownCode(dst)) dst = normalizeCode(fallbackTo) || "ILS"
+  if (!isKnownCode(src)) src = "USD"
+  if (!isKnownCode(dst)) dst = "ILS"
+  return { from: src, to: dst }
 }
 
 // preferFirst codes are pinned to the top (e.g. USD,EUR for from; ILS for to).
@@ -137,7 +156,7 @@ function currencyOptions(preferFirst) {
     code = codes[i]
     out.push({
       value: code,
-      label: code + " — " + CURRENCY_NAMES[code],
+      label: code + " - " + CURRENCY_NAMES[code],
       description: CURRENCY_NAMES[code]
     })
   }

@@ -26,12 +26,13 @@ Panel {
   }
 
   // USD/EUR are the usual "from"; ILS is the usual "to".
-  property string fromCode: Model.normalizeCode(setting("from", "USD")) || "USD"
-  property string toCode: Model.normalizeCode(setting("to", "ILS")) || "ILS"
+  property string fromCode: "USD"
+  property string toCode: "ILS"
   property string amountText: "1"
   property var rates: ({})
   property string statusText: ""
   property bool loading: false
+  property bool pickersReady: false
 
   readonly property var fromOptions: Model.currencyOptions(["USD", "EUR"])
   readonly property var toOptions: Model.currencyOptions(["ILS", "USD", "EUR"])
@@ -49,9 +50,9 @@ Panel {
     return Model.rateLabel(fromCode, toCode, unitRate)
   }
 
-  onFromCodeChanged: Qt.callLater(refresh)
-  onToCodeChanged: Qt.callLater(refresh)
+  onSettingsChanged: applySettingsPair()
   onOpenedChanged: if (opened) {
+    bindPickers()
     Qt.callLater(function() {
       amountField.selectAll()
       amountField.forceActiveFocus()
@@ -68,28 +69,51 @@ Panel {
     return false
   }
 
+  function applySettingsPair() {
+    var pair = Model.normalizePair(setting("from", "USD"), setting("to", "ILS"), "USD", "ILS")
+    fromCode = pair.from
+    toCode = pair.to
+    if (pickersReady) bindPickers()
+  }
+
+  // SearchableDropdown writes value= on select, which breaks `value: root.fromCode`.
+  // Re-bind after every owned state change so Swap / settings stay in sync with the UI.
+  function bindPickers() {
+    if (!fromPicker || !toPicker) return
+    fromPicker.value = Qt.binding(function() { return root.fromCode })
+    toPicker.value = Qt.binding(function() { return root.toCode })
+  }
+
   function persistPair(from, to) {
+    var pair = Model.normalizePair(from, to, fromCode, toCode)
     var entry = { id: root.moduleName }
     for (var existing in root.settings) if (existing !== "id") entry[existing] = root.settings[existing]
-    entry.from = from
-    entry.to = to
+    entry.from = pair.from
+    entry.to = pair.to
     root.settings = entry
-    root.fromCode = from
-    root.toCode = to
+    root.fromCode = pair.from
+    root.toCode = pair.to
     if (root.hostWidget && "settings" in root.hostWidget) root.hostWidget.settings = entry
     if (root.bar && root.bar.shell && typeof root.bar.shell.updateEntryInline === "function")
       root.bar.shell.updateEntryInline(root.moduleName, entry)
+    bindPickers()
   }
 
   function setFrom(code) {
     var next = Model.normalizeCode(code)
-    if (!next || next === fromCode) return
+    if (!Model.isKnownCode(next) || next === fromCode) {
+      bindPickers()
+      return
+    }
     persistPair(next, toCode)
   }
 
   function setTo(code) {
     var next = Model.normalizeCode(code)
-    if (!next || next === toCode) return
+    if (!Model.isKnownCode(next) || next === toCode) {
+      bindPickers()
+      return
+    }
     persistPair(fromCode, next)
   }
 
@@ -97,7 +121,8 @@ Panel {
     if (fetchProc.running) fetchProc.running = false
     loading = true
     statusText = ""
-    fetchProc.command = [root.pluginDir + "/bin/fetch-rates", Model.frankfurterUrl(fromCode)]
+    // USD base → every pair converts via cross-rates; swap/to never refetch.
+    fetchProc.command = [root.pluginDir + "/bin/fetch-rates", Model.frankfurterUrl()]
     fetchProc.running = true
   }
 
@@ -113,7 +138,12 @@ Panel {
     return amountField.activeFocus || pickerOpen()
   }
 
-  Component.onCompleted: refresh()
+  Component.onCompleted: {
+    applySettingsPair()
+    pickersReady = true
+    bindPickers()
+    refresh()
+  }
 
   Timer {
     interval: 60 * 60 * 1000
@@ -202,7 +232,6 @@ Panel {
           foreground: root.foreground
           placeholderText: "Search currency..."
           options: root.fromOptions
-          value: root.fromCode
           onChanged: function(v) { root.setFrom(v) }
         }
 
@@ -214,7 +243,6 @@ Panel {
           foreground: root.foreground
           placeholderText: "Search currency..."
           options: root.toOptions
-          value: root.toCode
           onChanged: function(v) { root.setTo(v) }
         }
 
