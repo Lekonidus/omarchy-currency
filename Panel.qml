@@ -4,6 +4,7 @@ import Quickshell.Io
 import qs.Commons
 import qs.Ui
 import "Model.js" as Model
+import "PanelLogic.js" as Logic
 
 Panel {
   id: root
@@ -17,7 +18,6 @@ Panel {
   readonly property color foreground: bar ? bar.foreground : Color.foreground
   readonly property color dim: Qt.darker(foreground, 1.55)
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
-  // Plugin root on disk (works whether the folder is "currency" or the id).
   readonly property string pluginDir: {
     var path = Qt.resolvedUrl(".").toString()
     if (path.indexOf("file://") === 0) path = path.slice(7)
@@ -25,14 +25,12 @@ Panel {
     return path
   }
 
-  // USD/EUR are the usual "from"; ILS is the usual "to".
   property string fromCode: "USD"
   property string toCode: "ILS"
   property string amountText: "1"
   property var rates: ({})
   property string statusText: ""
   property bool loading: false
-  property bool pickersReady: false
 
   readonly property var fromOptions: Model.currencyOptions(["USD", "EUR"])
   readonly property var toOptions: Model.currencyOptions(["ILS", "USD", "EUR"])
@@ -49,10 +47,13 @@ Panel {
     if (isNaN(unitRate)) return loading ? "Fetching..." : ""
     return Model.rateLabel(fromCode, toCode, unitRate)
   }
+  readonly property string resultText: {
+    if (isNaN(converted)) return loading ? "..." : "No rate"
+    return Model.formatMoney(converted) + " " + toCode
+  }
 
   onSettingsChanged: applySettingsPair()
   onOpenedChanged: if (opened) {
-    bindPickers()
     Qt.callLater(function() {
       amountField.selectAll()
       amountField.forceActiveFocus()
@@ -73,15 +74,6 @@ Panel {
     var pair = Model.normalizePair(setting("from", "USD"), setting("to", "ILS"), "USD", "ILS")
     fromCode = pair.from
     toCode = pair.to
-    if (pickersReady) bindPickers()
-  }
-
-  // SearchableDropdown writes value= on select, which breaks `value: root.fromCode`.
-  // Re-bind after every owned state change so Swap / settings stay in sync with the UI.
-  function bindPickers() {
-    if (!fromPicker || !toPicker) return
-    fromPicker.value = Qt.binding(function() { return root.fromCode })
-    toPicker.value = Qt.binding(function() { return root.toCode })
   }
 
   function persistPair(from, to) {
@@ -96,38 +88,31 @@ Panel {
     if (root.hostWidget && "settings" in root.hostWidget) root.hostWidget.settings = entry
     if (root.bar && root.bar.shell && typeof root.bar.shell.updateEntryInline === "function")
       root.bar.shell.updateEntryInline(root.moduleName, entry)
-    bindPickers()
   }
 
   function setFrom(code) {
     var next = Model.normalizeCode(code)
-    if (!Model.isKnownCode(next) || next === fromCode) {
-      bindPickers()
-      return
-    }
+    if (!Model.isKnownCode(next) || next === fromCode) return
     persistPair(next, toCode)
   }
 
   function setTo(code) {
     var next = Model.normalizeCode(code)
-    if (!Model.isKnownCode(next) || next === toCode) {
-      bindPickers()
-      return
-    }
+    if (!Model.isKnownCode(next) || next === toCode) return
     persistPair(fromCode, next)
+  }
+
+  function swapPair() {
+    var next = Logic.applySwap(fromCode, toCode)
+    persistPair(next.from, next.to)
   }
 
   function refresh() {
     if (fetchProc.running) fetchProc.running = false
     loading = true
     statusText = ""
-    // USD base → every pair converts via cross-rates; swap/to never refetch.
     fetchProc.command = [root.pluginDir + "/bin/fetch-rates", Model.frankfurterUrl()]
     fetchProc.running = true
-  }
-
-  function swapPair() {
-    persistPair(toCode, fromCode)
   }
 
   function pickerOpen() {
@@ -138,10 +123,21 @@ Panel {
     return amountField.activeFocus || pickerOpen()
   }
 
+  function statusJson() {
+    var snap = Logic.uiSnapshot(fromCode, toCode, amountText, rates, Model)
+    snap.loading = loading
+    snap.statusText = statusText
+    snap.fromPicker = fromPicker ? fromPicker.value : ""
+    snap.toPicker = toPicker ? toPicker.value : ""
+    snap.labelsMatch = Logic.labelsMatchCodes(
+      fromPicker ? fromPicker.value : "",
+      toPicker ? toPicker.value : "",
+      fromCode, toCode)
+    return JSON.stringify(snap)
+  }
+
   Component.onCompleted: {
     applySettingsPair()
-    pickersReady = true
-    bindPickers()
     refresh()
   }
 
@@ -156,8 +152,6 @@ Panel {
     id: fetchProc
     stdout: StdioCollector { id: fetchOut }
     stderr: StdioCollector { }
-    // Parse only after the bounded helper exits 0. Stdio is capped at 64 KiB
-    // by bin/fetch-rates before it ever reaches this collector.
     onExited: function(code) {
       root.loading = false
       if (code !== 0) {
@@ -224,7 +218,7 @@ Panel {
           }
         }
 
-        SearchableDropdown {
+        CurrencyPicker {
           id: fromPicker
           width: parent.width
           label: "From"
@@ -232,10 +226,11 @@ Panel {
           foreground: root.foreground
           placeholderText: "Search currency..."
           options: root.fromOptions
+          value: root.fromCode
           onChanged: function(v) { root.setFrom(v) }
         }
 
-        SearchableDropdown {
+        CurrencyPicker {
           id: toPicker
           width: parent.width
           label: "To"
@@ -243,15 +238,14 @@ Panel {
           foreground: root.foreground
           placeholderText: "Search currency..."
           options: root.toOptions
+          value: root.toCode
           onChanged: function(v) { root.setTo(v) }
         }
 
         Text {
           width: parent.width
           textFormat: Text.PlainText
-          text: isNaN(root.converted)
-            ? (root.loading ? "..." : "No rate")
-            : (Model.formatMoney(root.converted) + " " + root.toCode)
+          text: root.resultText
           color: root.foreground
           font.family: root.fontFamily
           font.pixelSize: Style.font.title

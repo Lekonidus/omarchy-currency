@@ -71,6 +71,15 @@ BarWidget {
     function hide(): void { root.close() }
     function toggle(): void { root.togglePanel() }
     function refresh(): string { root.refresh(); return "ok" }
+    function status(): string {
+      return panelLoader.item && panelLoader.item.statusJson
+        ? panelLoader.item.statusJson()
+        : "{\"error\":\"panel not ready\"}"
+    }
+    function swap(): string {
+      if (panelLoader.item && panelLoader.item.swapPair) panelLoader.item.swapPair()
+      return status()
+    }
   }
 
   BarIconButton {

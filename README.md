@@ -39,6 +39,13 @@ omarchy plugin remove io.github.lekonidus.currency --yes
 - In the panel: type an amount, pick currencies, **Swap** / **Refresh**
 - Shortcuts while the panel is open: `s` swap, `r` refresh, `Esc` close
 
+Debug pair state over IPC:
+
+```bash
+omarchy-shell io.github.lekonidus.currency status
+omarchy-shell io.github.lekonidus.currency swap
+```
+
 ## Dependencies
 
 - Omarchy 4 (`schemaVersion: 1` plugin API)
